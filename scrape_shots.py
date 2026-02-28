@@ -8,27 +8,7 @@ logger = logging.getLogger(__name__)
 import pandas as pd
 
 
-def main():
-    # robots_res = requests.get('http://tulospalvelu.fliiga.com/robots.txt')
-    # print(robots_res.status_code, "\n")
-    # print(robots_res.content)
-
-    # res = requests.get("https://tulospalvelu.fliiga.com/match/868713/shotmap")
-    # soup = BeautifulSoup(res.content, 'html.parser')
-    # print(res.status_code, "\n")
-    # # print(res.content)
-    # print(soup.prettify())
-
-    logging.basicConfig(filename='sabastats.log', level=logging.INFO)
-    logger.info(f'Starting {__name__}')
-
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--window-size=1920,1200")
-
-    logger.info('Starting Chrome')
-    driver = webdriver.Chrome(options=options)
-    url = 'https://tulospalvelu.fliiga.com/match/868713/events'
+def scrape_match_page(driver, url, date=None, SAVE_TO_CSV=True) -> pd.DataFrame:
     game_id = url.split('/')[-2]
     logger.info(f'Requesting page {url}')
     driver.get(url)
@@ -45,8 +25,8 @@ def main():
         team_names = WebDriverWait(driver, 5).until(
             EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.teamname'))
             )
-    except Exception:
-        logger.error(f'Team names not found from {url}')
+    except Exception as e:
+        logger.error(f'Team names not found from {url}. Errorcode: {e}')
         team_A, team_B = ['A', 'B']
     
     else:
@@ -66,8 +46,8 @@ def main():
         shot_spots = WebDriverWait(driver, 5).until(
             EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.shot-spot'))
         )
-    except Exception:
-        logger.error(f'No elements of type shot-spot found in {url}.')
+    except Exception as e:
+        logger.error(f'No elements of type shot-spot found in {url}. Errorcode: {e}')
         shot_spots = []
 
     shot_list = []
@@ -102,19 +82,36 @@ def main():
             'X-coordinate': x_coordinate,
             'Y-coordinate': y_coordinate
         })
-        print(shot_spot.text, shot_spot.get_attribute('style'), shot_spot.get_attribute('class'))
+        # print(shot_spot.text, shot_spot.get_attribute('style'), shot_spot.get_attribute('class'))
 
     logger.info('Creating dataframe from list of dictionaries.')
     df = pd.DataFrame(shot_list)
 
-    output_file = 'test_output.csv'
-    logger.info(f'Writing dataframe to {output_file}')
-    df.to_csv(output_file)
+    if SAVE_TO_CSV:
+        output_file = 'test_output.csv'
+        logger.info(f'Writing dataframe to {output_file}')
+        df.to_csv(output_file)
     
+    logger.info('scrape_match_page finished.')
+    return df
+
+def main():
+    logging.basicConfig(filename='sabastats.log', level=logging.INFO)
+    logger.info(f'Starting {__name__}')
+
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--window-size=1920,1200")
+
+    logger.info('Starting Chrome')
+    driver = webdriver.Chrome(options=options)
+    url = 'https://tulospalvelu.fliiga.com/match/868713/events'
+    scrape_match_page(driver, url)
 
     logger.info('Quitting Chrome')
     driver.quit()
     logger.info('Program finished.')
+    
 
 if __name__ == "__main__":
     main()
