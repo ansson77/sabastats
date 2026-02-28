@@ -29,6 +29,7 @@ def main():
     logger.info('Starting Chrome')
     driver = webdriver.Chrome(options=options)
     url = 'https://tulospalvelu.fliiga.com/match/868713/events'
+    game_id = url.split('/')[-2]
     logger.info(f'Requesting page {url}')
     driver.get(url)
 
@@ -39,23 +40,26 @@ def main():
     # matching elements (note the leading dot for a class selector) and wait
     # until they appear so the javascript has a chance to populate them.
 
-    # Click the Laukaisukartta button first to get the correct page.
+    logger.info('Getting Team names.')
+    try:
+        team_names = WebDriverWait(driver, 5).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.teamname'))
+            )
+    except Exception:
+        logger.error(f'Team names not found from {url}')
+        team_A, team_B = ['A', 'B']
+    
+    else:
+        team_A = team_names[0].text
+        team_B = team_names[1].text
+        logger.info(f'Teamnames that were found were A: {team_A}, B: {team_B}')
+
+
     logger.info('Clicking Laukaisukartta.')
     wait = WebDriverWait(driver, 5)
     wait.until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, "div[role='tablist'] a.v-tab[href*='shotmap']"))
     ).click()
-
-    logger.info('Getting Team names.')
-    try:
-        team_names = WebDriverWait(driver, 5).until(
-            EC.presence_of_all_elements_located(By.CSS_SELECTOR, '.teamname')
-        )
-    except Exception:
-        logger.error(f'Team names not found {url}')
-        team_names = ['A', 'B']
-    
-    team_A, team_B = team_names
 
     logger.info('Selecting all shot-spot type elements.')
     try:
@@ -91,7 +95,7 @@ def main():
         # Style is in format: 'left: XX.XX%; top: YY.YY%;'
 
         shot_list.append({
-            'Match': url,
+            'Match': game_id,
             'Team name': team_name,
             'Player number': shot_spot.text,
             'Shot outcome': shot_outcome,
@@ -100,7 +104,12 @@ def main():
         })
         print(shot_spot.text, shot_spot.get_attribute('style'), shot_spot.get_attribute('class'))
 
+    logger.info('Creating dataframe from list of dictionaries.')
     df = pd.DataFrame(shot_list)
+
+    output_file = 'test_output.csv'
+    logger.info(f'Writing dataframe to {output_file}')
+    df.to_csv(output_file)
     
 
     logger.info('Quitting Chrome')
