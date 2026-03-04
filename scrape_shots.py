@@ -6,9 +6,12 @@ from selenium.webdriver.support import expected_conditions as EC
 import logging
 logger = logging.getLogger(__name__)
 import pandas as pd
+from datetime import date
+
+MATCH_FOLDER = 'match_folder'
 
 
-def scrape_match_page(driver, url, date=None, SAVE_TO_CSV=True) -> pd.DataFrame:
+def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True) -> pd.DataFrame:
     game_id = url.split('/')[-2]
     logger.info(f'Requesting page {url}')
     driver.get(url)
@@ -20,19 +23,19 @@ def scrape_match_page(driver, url, date=None, SAVE_TO_CSV=True) -> pd.DataFrame:
     # matching elements (note the leading dot for a class selector) and wait
     # until they appear so the javascript has a chance to populate them.
 
-    logger.info('Getting Team names.')
-    try:
-        team_names = WebDriverWait(driver, 5).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.teamname'))
-            )
-    except Exception as e:
-        logger.error(f'Team names not found from {url}. Errorcode: {e}')
-        team_A, team_B = ['A', 'B']
+    # logger.info('Getting Team names.')
+    # try:
+    #     team_names = WebDriverWait(driver, 5).until(
+    #         EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.teamname'))
+    #         )
+    # except Exception as e:
+    #     logger.error(f'Team names not found from {url}. Errorcode: {e}')
+    #     team_A, team_B = ['A', 'B']
     
-    else:
-        team_A = team_names[0].text
-        team_B = team_names[1].text
-        logger.info(f'Teamnames that were found were A: {team_A}, B: {team_B}')
+    # else:
+    #     team_A = team_names[0].text
+    #     team_B = team_names[1].text
+    #     logger.info(f'Teamnames that were found were A: {team_A}, B: {team_B}')
 
 
     logger.info('Clicking Laukaisukartta.')
@@ -87,8 +90,8 @@ def scrape_match_page(driver, url, date=None, SAVE_TO_CSV=True) -> pd.DataFrame:
     logger.info('Creating dataframe from list of dictionaries.')
     df = pd.DataFrame(shot_list)
 
-    if SAVE_TO_CSV:
-        output_file = 'test_output.csv'
+    if save_to_csv:
+        output_file = f'{MATCH_FOLDER}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}.csv'
         logger.info(f'Writing dataframe to {output_file}')
         df.to_csv(output_file)
     
@@ -97,23 +100,35 @@ def scrape_match_page(driver, url, date=None, SAVE_TO_CSV=True) -> pd.DataFrame:
 
 def scrape_entire_season(driver, url='https://tulospalvelu.fliiga.com/matches/402!sb2025', season_start_year='2025'):
     logger.info(f'Starting execution of scrape_entire_season. Will scrape all matches from season {season_start_year}.')
-    logger.info('Gathering all match elements.')
 
+    logger.info('Connecting to:' + url)
     driver.get(url)
 
+    logger.info('Gathering all match elements.')
     try:
         matches = WebDriverWait(driver, 5).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.matchbutton'))
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.outerrow'))
         )
     except Exception as e:
         logger.error(f'Failed to find match elements: {e}')
-        matches = []
+        return None
     
-    if len(matches) > 0:
-        print(matches[0].get_attribute('href'))
-        # for match in matches:
-        #     date, _time, _arena, team_A, _dash, team_B, _ottelukeskus = match.text.split('\n')
-        #     date = date.split()[1]
+    for match in matches:
+        match_info = match.text.split('\n')
+        if len(match_info) < 7:
+            continue
+        elif len(match_info) >7:
+            date_str, _time, _venue, team_A, _score, _ja, team_B, _ottelukeskus = match_info
+        else:
+            date_str, _time, _venue, team_A, _score, team_B, _ottelukeskus = match_info
+        print(match_info)
+        date_str = date_str.split('.')
+        d = date(int(date_str[2]), int(date_str[1]), int(date_str[0]))
+        match_url = 'https://tulospalvelu.fliiga.com/match/' + match.get_attribute('matchid') + '/events'
+        # df = scrape_match_page(driver, match_url, d, team_A, team_B, True)
+        print(f'{team_A} - {team_B} {d.day}.{d.month}.{d.year}\n')
+
+
 
 
 def main():
