@@ -95,6 +95,27 @@ def scrape_match_page(driver, url, date=None, SAVE_TO_CSV=True) -> pd.DataFrame:
     logger.info('scrape_match_page finished.')
     return df
 
+def scrape_entire_season(driver, url='https://tulospalvelu.fliiga.com/matches/402!sb2025', season_start_year='2025'):
+    logger.info(f'Starting execution of scrape_entire_season. Will scrape all matches from season {season_start_year}.')
+    logger.info('Gathering all match elements.')
+
+    driver.get(url)
+
+    try:
+        matches = WebDriverWait(driver, 5).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.matchbutton'))
+        )
+    except Exception as e:
+        logger.error(f'Failed to find match elements: {e}')
+        matches = []
+    
+    if len(matches) > 0:
+        print(matches[0].get_attribute('href'))
+        # for match in matches:
+        #     date, _time, _arena, team_A, _dash, team_B, _ottelukeskus = match.text.split('\n')
+        #     date = date.split()[1]
+
+
 def main():
     logging.basicConfig(filename='sabastats.log', level=logging.INFO)
     logger.info(f'Starting {__name__}')
@@ -106,7 +127,8 @@ def main():
     logger.info('Starting Chrome')
     driver = webdriver.Chrome(options=options)
     url = 'https://tulospalvelu.fliiga.com/match/868713/events'
-    scrape_match_page(driver, url)
+    # scrape_match_page(driver, url)
+    scrape_entire_season(driver)
 
     logger.info('Quitting Chrome')
     driver.quit()
