@@ -2,3 +2,5 @@ sabavenv/
 .git
 sabastats.log
 test_output.csv
+drawing.ipynb
+plotting.ipynb

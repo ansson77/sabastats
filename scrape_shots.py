@@ -90,19 +90,21 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
 
         shot_team = shot_spot_class[1]
 
-        if shot_team == 'team_A':
-            team_name = team_A
-        elif shot_team == 'team_B':
-            team_name = team_B
-        else:
-            logger.error('Failed to parse team A or B from shot-spot class.')
-            team_name = 'Unkown'
-
         spot_style = shot_spot.get_attribute('style').split()
         x_coordinate = float(spot_style[1][:-2])
         y_coordinate = float(spot_style[3][:-2])
         # Origin is top left, coordinates as percentages of field size.
         # Style is in format: 'left: XX.XX%; top: YY.YY%;'
+
+        if shot_team == 'team_A':
+            team_name = team_A
+        elif shot_team == 'team_B':
+            team_name = team_B
+            # Mirror all shots.
+            x_coordinate = 100.0 - x_coordinate
+        else:
+            logger.error('Failed to parse team A or B from shot-spot class.')
+            team_name = 'Unkown'
 
         shot_list.append({
             'Match': game_id,
