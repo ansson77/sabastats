@@ -13,8 +13,7 @@ MATCH_FOLDER = 'match_folder'
 
 def analyse_goal_popup(driver, shot_spot):
     logger.info('Shot was a goal, analyse the shot target.')
-    hover = ActionChains(driver).move_to_element(shot_spot)
-    hover.perform()
+
     print('\n')
     return [0,0]
 
@@ -60,6 +59,7 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
     )
 
     shot_list = []
+    shot_popup_set = set()
 
     for shot_spot in shot_spots:
         if shot_spot.text == 'XX':
@@ -68,7 +68,26 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
         shot_spot_class = shot_spot.get_attribute('class').split()
         shot_outcome = shot_spot_class[2]
         if shot_outcome == 'shot_goal':
-            shot_x, shot_y = analyse_goal_popup(driver, shot_spot)
+            driver.execute_script("""
+                const el = arguments[0];
+                for (const type of ['mouseenter','mouseover','mousemove']) {
+                    const evt = new MouseEvent(type, {bubbles: true, cancelable: true, view: window});
+                    el.dispatchEvent(evt);
+                }
+                """, shot_spot)
+            shot_popups = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-goal-placement")))
+            for popup in shot_popups:
+                if popup not in shot_popup_set:
+                    shot_popup = popup
+                    shot_popup_set.add(popup)
+                    break
+            popup_style = shot_popup.get_attribute('style')
+            popup_style = popup_style.split(':')
+            shot_x = float(popup_style[1][:-7])
+            shot_y = float(popup_style[2][:-3])
+        else:
+            shot_x, shot_y = [-1, -1]
+
         shot_team = shot_spot_class[1]
 
         if shot_team == 'team_A':
@@ -91,7 +110,9 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
             'Player number': shot_spot.text,
             'Shot outcome': shot_outcome,
             'X-coordinate': x_coordinate,
-            'Y-coordinate': y_coordinate
+            'Y-coordinate': y_coordinate,
+            'Goal_X': shot_x,
+            'Goal_Y': shot_y
         })
         # print(shot_spot.text, shot_spot.get_attribute('style'), shot_spot.get_attribute('class'))
 
@@ -99,7 +120,7 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
 
     if save_to_csv:
         keys = shot_list[0].keys()
-        output_file = f'{MATCH_FOLDER}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}.csv'
+        output_file = f'{MATCH_FOLDER}/{date.year}-{date.year + 1}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}.csv'
         logger.info(f'Writing dataframe to {output_file}')
         with open(output_file, 'w') as f:
             dict_writer = csv.DictWriter(f, keys)
@@ -153,13 +174,13 @@ def main():
     logger.info(f'Starting {__name__}')
 
     options = Options()
-    # options.add_argument("--headless")
+    options.add_argument("--headless")
     options.add_argument("--window-size=1920,1200")
 
     logger.info('Starting Chrome')
     driver = webdriver.Chrome(options=options)
     url = 'https://tulospalvelu.fliiga.com/match/868713/events'
-    scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', False)
+    # scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', True) # For testing.
     # scrape_entire_season(driver)
 
     logger.info('Quitting Chrome')
