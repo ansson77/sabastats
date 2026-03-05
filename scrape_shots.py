@@ -3,13 +3,22 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 import logging
 logger = logging.getLogger(__name__)
-import pandas as pd
 from datetime import date
 import csv
 
 MATCH_FOLDER = 'match_folder'
+
+def analyse_goal_popup(driver, shot_spot):
+    logger.info('Shot was a goal, analyse the shot target.')
+    hover = ActionChains(driver).move_to_element(shot_spot)
+    hover.perform()
+    print('\n')
+    return [0,0]
+
+
 
 
 def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
@@ -58,6 +67,8 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
 
         shot_spot_class = shot_spot.get_attribute('class').split()
         shot_outcome = shot_spot_class[2]
+        if shot_outcome == 'shot_goal':
+            shot_x, shot_y = analyse_goal_popup(driver, shot_spot)
         shot_team = shot_spot_class[1]
 
         if shot_team == 'team_A':
@@ -97,7 +108,7 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
     
     logger.info('scrape_match_page finished.')
 
-    
+
 
 def scrape_entire_season(driver, url='https://tulospalvelu.fliiga.com/matches/402!sb2025'):
     logger.info(f'Starting execution of scrape_entire_season.')
@@ -142,13 +153,13 @@ def main():
     logger.info(f'Starting {__name__}')
 
     options = Options()
-    options.add_argument("--headless")
+    # options.add_argument("--headless")
     options.add_argument("--window-size=1920,1200")
 
     logger.info('Starting Chrome')
     driver = webdriver.Chrome(options=options)
     url = 'https://tulospalvelu.fliiga.com/match/868713/events'
-    scrape_match_page(driver, url)
+    scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', False)
     # scrape_entire_season(driver)
 
     logger.info('Quitting Chrome')
