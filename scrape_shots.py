@@ -7,11 +7,12 @@ import logging
 logger = logging.getLogger(__name__)
 import pandas as pd
 from datetime import date
+import csv
 
 MATCH_FOLDER = 'match_folder'
 
 
-def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True) -> pd.DataFrame:
+def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
     game_id = url.split('/')[-2]
     logger.info(f'Requesting page {url}')
     driver.get(url)
@@ -45,13 +46,9 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True) -> pd
     ).click()
 
     logger.info('Selecting all shot-spot type elements.')
-    try:
-        shot_spots = WebDriverWait(driver, 5).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.shot-spot'))
-        )
-    except Exception as e:
-        logger.error(f'No elements of type shot-spot found in {url}. Errorcode: {e}')
-        shot_spots = []
+    shot_spots = WebDriverWait(driver, 5).until(
+        EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.shot-spot'))
+    )
 
     shot_list = []
 
@@ -88,45 +85,54 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True) -> pd
         # print(shot_spot.text, shot_spot.get_attribute('style'), shot_spot.get_attribute('class'))
 
     logger.info('Creating dataframe from list of dictionaries.')
-    df = pd.DataFrame(shot_list)
 
     if save_to_csv:
+        keys = shot_list[0].keys()
         output_file = f'{MATCH_FOLDER}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}.csv'
         logger.info(f'Writing dataframe to {output_file}')
-        df.to_csv(output_file)
+        with open(output_file, 'w') as f:
+            dict_writer = csv.DictWriter(f, keys)
+            dict_writer.writeheader()
+            dict_writer.writerows(shot_list)
     
     logger.info('scrape_match_page finished.')
-    return df
 
-def scrape_entire_season(driver, url='https://tulospalvelu.fliiga.com/matches/402!sb2025', season_start_year='2025'):
-    logger.info(f'Starting execution of scrape_entire_season. Will scrape all matches from season {season_start_year}.')
+    
+
+def scrape_entire_season(driver, url='https://tulospalvelu.fliiga.com/matches/402!sb2025'):
+    logger.info(f'Starting execution of scrape_entire_season.')
 
     logger.info('Connecting to:' + url)
     driver.get(url)
 
     logger.info('Gathering all match elements.')
-    try:
-        matches = WebDriverWait(driver, 5).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.outerrow'))
-        )
-    except Exception as e:
-        logger.error(f'Failed to find match elements: {e}')
-        return None
+    matches = WebDriverWait(driver, 5).until(
+        EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.outerrow'))
+    )
     
     for match in matches:
         match_info = match.text.split('\n')
-        if len(match_info) < 7:
-            continue
-        elif len(match_info) >7:
-            date_str, _time, _venue, team_A, _score, _ja, team_B, _ottelukeskus = match_info
+        if len(match_info) > 7:
+            date_str, _time, _venue, team_A, score, _ja, team_B, _ottelukeskus = match_info
         else:
-            date_str, _time, _venue, team_A, _score, team_B, _ottelukeskus = match_info
-        print(match_info)
-        date_str = date_str.split('.')
-        d = date(int(date_str[2]), int(date_str[1]), int(date_str[0]))
+            date_str, _time, _venue, team_A, score, team_B, _ottelukeskus = match_info
+
+        if len(score) <= 1:
+            continue
+
+        # print(match_info)
+
+        if len(date_str) < 9:
+            date_str = date_str.split()[1][:-1].split('.')
+            d = date(date.today().year, int(date_str[1]), int(date_str[0]))
+        else:
+            date_str = date_str.split('.')
+            d = date(int(date_str[2]), int(date_str[1]), int(date_str[0]))
+
         match_url = 'https://tulospalvelu.fliiga.com/match/' + match.get_attribute('matchid') + '/events'
-        # df = scrape_match_page(driver, match_url, d, team_A, team_B, True)
-        print(f'{team_A} - {team_B} {d.day}.{d.month}.{d.year}\n')
+        scrape_match_page(driver, match_url, d, team_A, team_B, True)
+        # print(f'{team_A} - {team_B} {d.day}.{d.month}.{d.year}\n')
+
 
 
 
@@ -142,8 +148,8 @@ def main():
     logger.info('Starting Chrome')
     driver = webdriver.Chrome(options=options)
     url = 'https://tulospalvelu.fliiga.com/match/868713/events'
-    # scrape_match_page(driver, url)
-    scrape_entire_season(driver)
+    scrape_match_page(driver, url)
+    # scrape_entire_season(driver)
 
     logger.info('Quitting Chrome')
     driver.quit()
