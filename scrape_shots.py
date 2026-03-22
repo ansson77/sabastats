@@ -102,6 +102,7 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
             team_name = team_B
             # Mirror all shots.
             x_coordinate = 100.0 - x_coordinate
+            y_coordinate = 100.0 - y_coordinate
         else:
             logger.error('Failed to parse team A or B from shot-spot class.')
             team_name = 'Unkown'
