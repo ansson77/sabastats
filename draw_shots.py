@@ -7,8 +7,7 @@ RINK_SCALER = 1
 RINK_LENGTH = 40 * RINK_SCALER
 RINK_WIDTH = 20 * RINK_SCALER
 
-def create_pitch(length=RINK_LENGTH, width=RINK_WIDTH):
-    fig, ax = plt.subplots(figsize=(8, 4))
+def create_pitch(ax, length=RINK_LENGTH, width=RINK_WIDTH):
     corner_radius = 2 * RINK_SCALER
     # Draw straight segments (leave gaps of length=radius near corners)
     ax.plot([corner_radius, length - corner_radius], [0, 0], color='black')          # bottom
@@ -63,7 +62,6 @@ def create_pitch(length=RINK_LENGTH, width=RINK_WIDTH):
     ax.plot([x_small_goalie[0], x_small_goalie[0], x_small_goalie[1], x_small_goalie[1], x_small_goalie[0]],
              [y_small_goalie[0], y_small_goalie[1], y_small_goalie[1], y_small_goalie[0], y_small_goalie[0]], color='black')
 
-    return fig, ax
 
 def draw_shots(ax, df):
     df['x_coord'] = df['X'] * 0.01 * RINK_LENGTH
