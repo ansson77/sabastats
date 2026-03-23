@@ -113,8 +113,8 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
             'Team name': team_name,
             'Player number': shot_spot.text,
             'Shot outcome': shot_outcome,
-            'X-coordinate': x_coordinate,
-            'Y-coordinate': y_coordinate,
+            'X': x_coordinate,
+            'Y': y_coordinate,
             'Goal_X': shot_x,
             'Goal_Y': shot_y
         })
@@ -192,7 +192,7 @@ def main():
     logger.info('Starting Chrome')
     driver = webdriver.Chrome(options=options)
     url = 'https://tulospalvelu.fliiga.com/match/868713/events'
-    # scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', 'parquet') # For testing.
+    scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', 'parquet') # For testing.
     # scrape_entire_season(driver)
 
     logger.info('Quitting Chrome')
