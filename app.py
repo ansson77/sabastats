@@ -4,9 +4,8 @@ from io import BytesIO
 import plotly.graph_objects as go
 import numpy as np
 
-RINK_SCALER = 1
-RINK_LENGTH = 40 * RINK_SCALER
-RINK_WIDTH = 20 * RINK_SCALER
+RINK_LENGTH = 40
+RINK_WIDTH = 20
 
 
 def _quarter_arc(cx, cy, r, theta1_deg, theta2_deg, n=64):
@@ -17,8 +16,8 @@ def _quarter_arc(cx, cy, r, theta1_deg, theta2_deg, n=64):
     y = cy + r * np.sin(thetas)
     return x, y
 
-def create_pitch_plotly(length=RINK_LENGTH, width=RINK_WIDTH, scaler=RINK_SCALER):
-    corner_radius = 2 * scaler
+def create_pitch_plotly(length=RINK_LENGTH, width=RINK_WIDTH):
+    corner_radius = 2
     r = corner_radius
 
     shapes = []
@@ -43,8 +42,8 @@ def create_pitch_plotly(length=RINK_LENGTH, width=RINK_WIDTH, scaler=RINK_SCALER
     ]
 
     # Goalie areas (left side) — rectangles
-    x_big_goalie = (1.75 * scaler, (1.75 + 4) * scaler)
-    y_big_goalie = (width/2 - (2.5 * scaler), width/2 + (2.5 * scaler))
+    x_big_goalie = (1.75 , 1.75 + 4)
+    y_big_goalie = (width/2 - 2.5, width/2 + 2.5)
 
     shapes.append(
         dict(
@@ -65,8 +64,8 @@ def create_pitch_plotly(length=RINK_LENGTH, width=RINK_WIDTH, scaler=RINK_SCALER
         )
     )
 
-    x_small_goalie = (x_big_goalie[0] + 0.65 * scaler, x_big_goalie[0] + (1.65 * scaler))
-    y_small_goalie = (width/2 - (1.25 * scaler), width/2 + (1.25 * scaler))
+    x_small_goalie = (x_big_goalie[0] + 0.65, x_big_goalie[0] + 1.65)
+    y_small_goalie = (width/2 - 1.25, width/2 + 1.25)
 
     shapes.append(
         dict(
@@ -123,11 +122,22 @@ def create_pitch_plotly(length=RINK_LENGTH, width=RINK_WIDTH, scaler=RINK_SCALER
         paper_bgcolor="white",
     )
 
+    fig.add_scattergl(
+        x=view["X"], y=view["Y"], mode="markers",
+        marker=dict(size=6, opacity=0.6),
+        name="Shots",
+    )
+
     return fig
 
 app = Dash()
 
 df = pd.read_parquet('match_folder/2025-2026/a_b_2025_1_1.parquet')
+df['Y'] = 20 - df['Y']
+
+view = df[df['Team name'] == 'a']
+view = view[view['Player number'] == '77']
+
 
 app.layout = html.Div([
     dcc.Graph(id="shots", figure=create_pitch_plotly())
