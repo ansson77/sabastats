@@ -8,6 +8,7 @@ import logging
 logger = logging.getLogger(__name__)
 from datetime import date
 import csv
+import pandas as pd
 
 MATCH_FOLDER = 'match_folder'
 
@@ -20,7 +21,7 @@ def analyse_goal_popup(driver, shot_spot):
 
 
 
-def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
+def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
     game_id = url.split('/')[-2]
     logger.info(f'Requesting page {url}')
     driver.get(url)
@@ -121,14 +122,22 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_csv=True):
 
     logger.info('Creating dataframe from list of dictionaries.')
 
-    if save_to_csv:
-        keys = shot_list[0].keys()
-        output_file = f'{MATCH_FOLDER}/{date.year}-{date.year + 1}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}.csv'
-        logger.info(f'Writing dataframe to {output_file}')
-        with open(output_file, 'w') as f:
-            dict_writer = csv.DictWriter(f, keys)
-            dict_writer.writeheader()
-            dict_writer.writerows(shot_list)
+    output_file = f'{MATCH_FOLDER}/{date.year}-{date.year + 1}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}'
+    match save_to_file:
+        case 'parquet':
+            output_file = output_file + '.parquet'
+            logger.info(f'Writing dataframe to parquet file {output_file}')
+            pd.DataFrame(shot_list).to_parquet(output_file)
+        case False:
+            logger.info('Not saving the dataframe to any file.')
+        case _:
+            keys = shot_list[0].keys()
+            output_file = output_file + '.csv'
+            logger.info(f'Writing dataframe to csv {output_file}')
+            with open(output_file, 'w') as f:
+                dict_writer = csv.DictWriter(f, keys)
+                dict_writer.writeheader()
+                dict_writer.writerows(shot_list)
     
     logger.info('scrape_match_page finished.')
 
@@ -183,7 +192,7 @@ def main():
     logger.info('Starting Chrome')
     driver = webdriver.Chrome(options=options)
     url = 'https://tulospalvelu.fliiga.com/match/868713/events'
-    # scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', True) # For testing.
+    # scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', 'parquet') # For testing.
     # scrape_entire_season(driver)
 
     logger.info('Quitting Chrome')
