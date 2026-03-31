@@ -1,8 +1,9 @@
-from dash import Dash, html, dcc, Output, Input
+from dash import Dash, html, dcc, Output, Input, callback
 import pandas as pd
-from io import BytesIO
+# from io import BytesIO
 import plotly.graph_objects as go
 import numpy as np
+from plotly.colors import qualitative as qual
 
 RINK_LENGTH = 40
 RINK_WIDTH = 20
@@ -122,11 +123,33 @@ def create_pitch_plotly(length=RINK_LENGTH, width=RINK_WIDTH):
         paper_bgcolor="white",
     )
 
-    fig.add_scattergl(
-        x=view["X"], y=view["Y"], mode="markers",
-        marker=dict(size=6, opacity=0.6),
-        name="Shots",
-    )
+    return fig
+
+def add_team_trace(fig, view, team, selected_player):
+    color = team_colors.get(team, '#1f77b4')
+    if selected_player != 'All':
+        view = view[view['Player number'] == selected_player]
+    
+    fig.add_trace(go.Scattergl(
+        x=view['X'],
+        y=view['Y'],
+        mode='markers',
+        marker=dict(size=8, color=color, opacity=0.85),
+        name=team,
+        # number=view['Player number'],
+        hovertemplate="x: %{x:.2f}<br>y: %{y:.2f}<br>Team: %{text}<br>Player: %{number}<extra></extra>",
+        text=view['Team name']
+        # player_num_text=view
+
+    ))
+
+def make_figure(selected_teams, selected_player):
+    fig = create_pitch_plotly()
+    for team in selected_teams:
+        view = df[df['Team name'] == team]
+        if not view.empty:
+            add_team_trace(fig, view, team, selected_player)
+    fig.update_layout(legend=dict(orientation="h", x=0.5, xanchor="center", y=1.02))
 
     return fig
 
@@ -135,13 +158,54 @@ app = Dash()
 df = pd.read_parquet('match_folder/2025-2026/a_b_2025_1_1.parquet')
 df['Y'] = 20 - df['Y']
 
-view = df[df['Team name'] == 'a']
-view = view[view['Player number'] == '77']
 
+teams = df['Team name'].unique().tolist()
+teams.sort()
+
+players_of_teams = {team: df[df['Team name'] == team]['Player number'].unique().tolist() for team in teams}
+
+palette = qual.Set2  # or qual.Set1, qual.D3, etc.
+team_colors = {team: palette[i % len(palette)] for i, team in enumerate(teams)}
 
 app.layout = html.Div([
-    dcc.Graph(id="shots", figure=create_pitch_plotly())
+    html.Div([
+        dcc.Checklist(options=teams, value=teams, id='team_selector')
+    ], style={'width': '48%', 'display': 'inline-block'}),
+    html.Div([
+        dcc.Dropdown(id='player_selector', value='All')
+    ], style={'width': '48%', 'display': 'inline-block'}),
+    dcc.Graph(id="graph_item", figure=create_pitch_plotly())
 ])
+
+@callback(
+    Output('player_selector', 'options'),
+    Input('team_selector', 'value'))
+def set_player_options(selected_team):
+    list_of_players = [{'label': 'All', 'value': 'All'}]
+
+    if len(selected_team) > 1:
+        for team in selected_team:
+            list_of_players += [{'label': i, 'value': i} for i in players_of_teams[team]]
+        return list_of_players
+    
+    elif len(selected_team) == 0:
+        return list_of_players
+    
+    return list_of_players + [{'label': i, 'value': i} for i in players_of_teams[selected_team[0]]]
+
+@callback(
+    Output('player_selector', 'value'),
+    Input('player_selector', 'options'))
+def set_player_value(available_options):
+    return available_options[0]['value']
+
+
+@callback(
+    Output('graph_item', 'figure'),
+    Input('team_selector', 'value'),
+    Input('player_selector', 'value'))
+def update_graph(teams_chosen, player_chosen):
+    return make_figure(teams_chosen, player_chosen)
 
 
 if __name__ == '__main__':
