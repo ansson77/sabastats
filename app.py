@@ -138,9 +138,8 @@ def add_team_trace(fig, view, team, selected_player):
         name=team,
         # number=view['Player number'],
         hovertemplate="x: %{x:.2f}<br>y: %{y:.2f}<br>Team: %{text}<br>Player: %{number}<extra></extra>",
-        text=view['Team name']
-        # player_num_text=view
-
+        text=view['Team name'],
+        showlegend=False
     ))
 
 def make_figure(selected_teams, selected_player):
