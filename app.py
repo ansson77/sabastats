@@ -145,8 +145,10 @@ def add_team_trace(fig, view, team, selected_player):
 
 def make_figure(selected_teams, selected_player, seasons_to_include):
     fig = create_pitch_plotly()
-    date_min, date_max = seasons_to_include
-    seasons_filtered_df = df[df['date'] >= date(seasons_to_include, 6, 10)]
+    min_date = date(seasons_to_include[0], 6, 10)
+    max_date = date(seasons_to_include[1] + 1, 6, 9)
+    seasons_filtered_df = df[df['date'] >= min_date]
+    seasons_filtered_df = seasons_filtered_df[seasons_filtered_df['date'] <= max_date]
     for team in selected_teams:
         view = seasons_filtered_df[seasons_filtered_df['Team name'] == team]
         if not view.empty:
@@ -177,7 +179,7 @@ app.layout = html.Div([
         dcc.RangeSlider(min=first_season, 
                    max=last_season, 
                    marks={i: f'{i}-{i+1}' for i in range(first_season, last_season + 1, 1)}, 
-                   value=[2024-2025], 
+                   value=[2024,2025], 
                    reverse=False, 
                    included=True,
                    id='season_slider')
@@ -227,8 +229,7 @@ def set_player_value(available_options):
     Output('graph_item', 'figure'),
     Input('team_selector', 'value'),
     Input('player_selector', 'value'),
-    Input('season_slider', 'value'),
-    Input('shot_outcome_selector', 'value'))
+    Input('season_slider', 'value'))
 def update_graph(teams_chosen, player_chosen, seasons_to_include):
     return make_figure(teams_chosen, player_chosen, seasons_to_include)
 
