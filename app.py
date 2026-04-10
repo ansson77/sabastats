@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 from plotly.colors import qualitative as qual
+from datetime import date
 
 RINK_LENGTH = 40
 RINK_WIDTH = 20
@@ -142,10 +143,12 @@ def add_team_trace(fig, view, team, selected_player):
         showlegend=False
     ))
 
-def make_figure(selected_teams, selected_player):
+def make_figure(selected_teams, selected_player, seasons_to_include):
     fig = create_pitch_plotly()
+    date_min, date_max = seasons_to_include
+    seasons_filtered_df = df[df['date'] >= date(seasons_to_include, 6, 10)]
     for team in selected_teams:
-        view = df[df['Team name'] == team]
+        view = seasons_filtered_df[seasons_filtered_df['Team name'] == team]
         if not view.empty:
             add_team_trace(fig, view, team, selected_player)
     fig.update_layout(legend=dict(orientation="h", x=0.5, xanchor="center", y=1.02))
@@ -160,6 +163,9 @@ df['Y'] = 20 - df['Y']
 
 teams = df['Team name'].unique().tolist()
 teams.sort()
+first_season = 2010
+last_season = 2025
+shot_outcomes = {'shot_goal': 'Goal', 'shot_blocked': 'Blocked', 'shot_saved': 'Save', 'shot_offtarget': 'Miss'}
 
 players_of_teams = {team: df[df['Team name'] == team]['Player number'].unique().tolist() for team in teams}
 
@@ -168,13 +174,31 @@ team_colors = {team: palette[i % len(palette)] for i, team in enumerate(teams)}
 
 app.layout = html.Div([
     html.Div([
+        dcc.RangeSlider(min=first_season, 
+                   max=last_season, 
+                   marks={i: f'{i}-{i+1}' for i in range(first_season, last_season + 1, 1)}, 
+                   value=[2024-2025], 
+                   reverse=False, 
+                   included=True,
+                   id='season_slider')
+    ]),
+
+    html.Div([
         dcc.Checklist(options=teams, value=teams, id='team_selector')
-    ], style={'width': '48%', 'display': 'inline-block'}),
+    ], style={'width': '30%', 'display': 'inline-block'}),
+
     html.Div([
         dcc.Dropdown(id='player_selector', value='All')
-    ], style={'width': '48%', 'display': 'inline-block'}),
+    ], style={'width': '30%', 'display': 'inline-block'}),
+
+    html.Div([
+        dcc.Checklist(options=[shot_outcomes[i] for i in shot_outcomes.keys()],
+                      value=[outcome for outcome in shot_outcomes.keys()],
+                      id='shot_outcome_selector')
+    ], style={'width': '30%', 'display': 'inline-block', }),
     dcc.Graph(id="graph_item", figure=create_pitch_plotly())
 ])
+
 
 @callback(
     Output('player_selector', 'options'),
@@ -202,9 +226,11 @@ def set_player_value(available_options):
 @callback(
     Output('graph_item', 'figure'),
     Input('team_selector', 'value'),
-    Input('player_selector', 'value'))
-def update_graph(teams_chosen, player_chosen):
-    return make_figure(teams_chosen, player_chosen)
+    Input('player_selector', 'value'),
+    Input('season_slider', 'value'),
+    Input('shot_outcome_selector', 'value'))
+def update_graph(teams_chosen, player_chosen, seasons_to_include):
+    return make_figure(teams_chosen, player_chosen, seasons_to_include)
 
 
 if __name__ == '__main__':

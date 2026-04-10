@@ -110,6 +110,7 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
 
         shot_list.append({
             'Match': game_id,
+            'date': date,
             'Team name': team_name,
             'Player number': shot_spot.text,
             'Shot outcome': shot_outcome,
@@ -192,7 +193,7 @@ def main():
     logger.info('Starting Chrome')
     driver = webdriver.Chrome(options=options)
     url = 'https://tulospalvelu.fliiga.com/match/868713/events'
-    scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', 'csv') # For testing.
+    scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', 'parquet') # For testing.
     # scrape_entire_season(driver)
 
     logger.info('Quitting Chrome')
