@@ -132,8 +132,8 @@ def add_team_trace(fig, view, team, selected_player):
         view = view[view['Player number'] == selected_player]
     
     fig.add_trace(go.Scattergl(
-        x=view['X'],
-        y=view['Y'],
+        x=view['X'].to_numpy(),
+        y=view['Y'].to_numpy(),
         mode='markers',
         marker=dict(size=8, color=color, opacity=0.85),
         name=team,
@@ -143,16 +143,31 @@ def add_team_trace(fig, view, team, selected_player):
         showlegend=False
     ))
 
-def make_figure(selected_teams, selected_player, seasons_to_include):
-    fig = create_pitch_plotly()
+def make_figure(selected_teams, selected_player, seasons_to_include, shot_outcomes_selected):
+    shot_outcomes_selected = shot_outcomes_selected or []
     min_date = date(seasons_to_include[0], 6, 10)
     max_date = date(seasons_to_include[1] + 1, 6, 9)
-    seasons_filtered_df = df[df['date'] >= min_date]
-    seasons_filtered_df = seasons_filtered_df[seasons_filtered_df['date'] <= max_date]
+
+    fig = create_pitch_plotly()
+
+    mask = pd.Series(True, index=df.index)
+
+    mask &= (df['date'] >= min_date)
+    mask &= (df['date'] <= max_date)
+
+    if selected_teams:  # list (may be empty)
+        mask &= df["Team name"].isin(selected_teams)
+
+    if shot_outcomes_selected:  # list (may be empty)
+        mask &= df["Shot outcome"].isin(shot_outcomes_selected)
+
+    # Slice once and keep only plotting columns
+    view = df.loc[mask, ["X", "Y", "Team name", 'Player number']]
+
     for team in selected_teams:
-        view = seasons_filtered_df[seasons_filtered_df['Team name'] == team]
-        if not view.empty:
-            add_team_trace(fig, view, team, selected_player)
+        sub = view[view['Team name'] == team]
+        if not sub.empty:
+            add_team_trace(fig, sub, team, selected_player)
     fig.update_layout(legend=dict(orientation="h", x=0.5, xanchor="center", y=1.02))
 
     return fig
@@ -167,7 +182,6 @@ teams = df['Team name'].unique().tolist()
 teams.sort()
 first_season = 2010
 last_season = 2025
-shot_outcomes = {'shot_goal': 'Goal', 'shot_blocked': 'Blocked', 'shot_saved': 'Save', 'shot_offtarget': 'Miss'}
 
 players_of_teams = {team: df[df['Team name'] == team]['Player number'].unique().tolist() for team in teams}
 
@@ -194,10 +208,17 @@ app.layout = html.Div([
     ], style={'width': '30%', 'display': 'inline-block'}),
 
     html.Div([
-        dcc.Checklist(options=[shot_outcomes[i] for i in shot_outcomes.keys()],
-                      value=[outcome for outcome in shot_outcomes.keys()],
+        dcc.Checklist(options=[
+       {'label': 'Goal', 'value': 'shot_goal'},
+       {'label': 'Saved', 'value': 'shot_saved'},
+       {'label': 'Blocked', 'value': 'shot_blocked'},
+       {'label': 'Miss', 'value': 'shot_offtarget'}
+   ],
+
+                      value=['shot_goal', 'shot_saved', 'shot_blocked', 'shot_offtarget'],
                       id='shot_outcome_selector')
     ], style={'width': '30%', 'display': 'inline-block', }),
+
     dcc.Graph(id="graph_item", figure=create_pitch_plotly())
 ])
 
@@ -229,9 +250,10 @@ def set_player_value(available_options):
     Output('graph_item', 'figure'),
     Input('team_selector', 'value'),
     Input('player_selector', 'value'),
-    Input('season_slider', 'value'))
-def update_graph(teams_chosen, player_chosen, seasons_to_include):
-    return make_figure(teams_chosen, player_chosen, seasons_to_include)
+    Input('season_slider', 'value'),
+    Input('shot_outcome_selector', 'value'))
+def update_graph(teams_chosen, player_chosen, seasons_to_include, shot_outcomes_selected):
+    return make_figure(teams_chosen, player_chosen, seasons_to_include, shot_outcomes_selected)
 
 
 if __name__ == '__main__':
