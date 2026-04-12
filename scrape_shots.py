@@ -12,12 +12,82 @@ import pandas as pd
 
 MATCH_FOLDER = 'match_folder'
 
-def analyse_goal_popup(driver, shot_spot):
-    logger.info('Shot was a goal, analyse the shot target.')
+def find_goalies_of_match(driver):
+    team_a_goalies = []
+    team_b_goalies = []
 
-    print('\n')
-    return [0,0]
+    a_changes = WebDriverWait(driver, 5).until(
+        EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.home.li-mvvaihto.eventother.timer_0')))
 
+    b_changes = WebDriverWait(driver, 5).until(
+        EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.away.li-mvvaihto.eventother.timer_0'))
+    )
+    for change in a_changes:
+        text = change.text
+        text = text.split('\n')
+        time = text[0]
+        time = time.split(':')
+        minutes = int(time[0])
+        secs = int(time[1])
+
+        if len(text) == 2:
+            goalie = 'TM'
+        else:
+            goalie = text[2]
+        team_a_goalies.append([minutes, secs, goalie])
+
+    team_a_goalies.append([81, 00, 'END'])
+
+    for change in b_changes:
+        text = change.text
+        text = text.split('\n')
+        time = text[0]
+        time = time.split(':')
+        minutes = int(time[0])
+        secs = int(time[1])
+
+        if len(text) == 2:
+            time = text[0]
+            goalie = 'TM'
+        else:
+            goalie = text[2]
+        team_b_goalies.append([minutes, secs, goalie])
+        
+    team_b_goalies.append([81, 00, 'END'])
+
+    return team_a_goalies, team_b_goalies
+
+def goalie_finder(list_of_goalie_times, shot_mins, shot_secs):
+    def shot_after_goalie_event(goalie_event):
+        '''
+        Return 1 if shot is after the goalie time, 0 if equal, -1 if shot is before the goalie event.
+        '''
+        goalie_mins, goalie_secs, _ = goalie_event
+        if shot_mins < goalie_mins:
+            return -1
+        if shot_mins > goalie_mins:
+            return 1
+        # Only case left is if the shot and goalie event happened during the same minute.
+        # Compare seconds.
+        if shot_secs < goalie_secs:
+            return -1
+        if shot_secs > goalie_secs:
+            return 1
+        
+        return 0
+
+    for i in range(len(list_of_goalie_times)):
+        current = shot_after_goalie_event(list_of_goalie_times[i])
+        next = shot_after_goalie_event(list_of_goalie_times[i + 1])
+        if current == -1:
+            continue
+        if current >= 0 \
+            and next == -1:
+            goalie = list_of_goalie_times[i][2]
+            break
+        else:
+            continue
+    return goalie
 
 
 
@@ -25,6 +95,7 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
     game_id = url.split('/')[-2]
     logger.info(f'Requesting page {url}')
     driver.get(url)
+    team_a_goalies, team_b_goalies = find_goalies_of_match(driver)
 
     # the page renders shot locations as elements with the CSS class
     # "shot-spot".  the previous selector treated it as a tag name and used
@@ -68,6 +139,8 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
 
         shot_spot_class = shot_spot.get_attribute('class').split()
         shot_outcome = shot_spot_class[2]
+        shot_team = shot_spot_class[1]
+
         if shot_outcome == 'shot_goal':
             driver.execute_script("""
                 const el = arguments[0];
@@ -76,20 +149,39 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
                     el.dispatchEvent(evt);
                 }
                 """, shot_spot)
-            shot_popups = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-goal-placement")))
-            for popup in shot_popups:
-                if popup not in shot_popup_set:
-                    shot_popup = popup
-                    shot_popup_set.add(popup)
-                    break
-            popup_style = shot_popup.get_attribute('style')
+            popup = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-goal-placement")))[0]
+
+            popup_style = popup.get_attribute('style')
             popup_style = popup_style.split(':')
             shot_x = float(popup_style[1][:-7])
             shot_y = float(popup_style[2][:-3])
         else:
             shot_x, shot_y = [-1, -1]
 
-        shot_team = shot_spot_class[1]
+        if shot_outcome == 'shot_saved' or shot_outcome == 'shot_goal':
+            driver.execute_script("""
+                const el = arguments[0];
+                for (const type of ['mouseenter','mouseover','mousemove']) {
+                    const evt = new MouseEvent(type, {bubbles: true, cancelable: true, view: window});
+                    el.dispatchEvent(evt);
+                }
+                """, shot_spot)
+            
+            popup = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-popup")))[0]
+            shot_info = popup.text
+            shot_time = shot_info.split('\n')[2]
+            shot_time = shot_time.split(':')
+            shot_mins = int(shot_time[0])
+            shot_secs = int(shot_time[1])
+
+            if shot_team == 'team_A':
+                goalie = goalie_finder(team_a_goalies, shot_mins, shot_secs)
+            elif shot_team == 'team_B':
+                goalie = goalie_finder(team_b_goalies, shot_mins, shot_secs)
+        
+        else:
+            goalie = None
+
 
         spot_style = shot_spot.get_attribute('style').split()
         x_coordinate = float(spot_style[1][:-2]) * 0.4
@@ -117,7 +209,9 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
             'X': x_coordinate,
             'Y': y_coordinate,
             'Goal_X': shot_x,
-            'Goal_Y': shot_y
+            'Goal_Y': shot_y,
+            'Shot time': shot_time,
+            'Goalie': goalie
         })
         # print(shot_spot.text, shot_spot.get_attribute('style'), shot_spot.get_attribute('class'))
 
@@ -129,9 +223,7 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
             output_file = output_file + '.parquet'
             logger.info(f'Writing dataframe to parquet file {output_file}')
             pd.DataFrame(shot_list).to_parquet(output_file)
-        case False:
-            logger.info('Not saving the dataframe to any file.')
-        case _:
+        case 'csv':
             keys = shot_list[0].keys()
             output_file = output_file + '.csv'
             logger.info(f'Writing dataframe to csv {output_file}')
@@ -139,6 +231,8 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
                 dict_writer = csv.DictWriter(f, keys)
                 dict_writer.writeheader()
                 dict_writer.writerows(shot_list)
+        case _:
+            logger.info('Not saving the dataframe to any file.')
     
     logger.info('scrape_match_page finished.')
 
@@ -193,7 +287,8 @@ def main():
     logger.info('Starting Chrome')
     driver = webdriver.Chrome(options=options)
     url = 'https://tulospalvelu.fliiga.com/match/868713/events'
-    scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', 'parquet') # For testing.
+
+    scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', 'csv') # For testing.
     # scrape_entire_season(driver)
 
     logger.info('Quitting Chrome')
@@ -202,4 +297,9 @@ def main():
     
 
 if __name__ == "__main__":
+    # options = Options()
+    # options.add_argument("--headless")
+    # options.add_argument("--window-size=1920,1200")
+    # driver = webdriver.Chrome(options=options)
+    # find_goalies_of_match(driver)
     main()
