@@ -3,7 +3,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
 import logging
 logger = logging.getLogger(__name__)
 from datetime import date
@@ -11,6 +10,36 @@ import csv
 import pandas as pd
 
 MATCH_FOLDER = 'match_folder'
+
+def create_player_dictionary(driver):
+    team_a_players = {}
+    team_b_players = {}
+
+    containers = WebDriverWait(driver, 10).until(
+        EC.presence_of_all_elements_located(
+            (By.CSS_SELECTOR, ".shotmap-player-toggle")
+        )
+    )
+    text_container_a = containers[0].text
+    text_container_b = containers[1].text
+    text_container_a = text_container_a.split('#')
+    text_container_b = text_container_b.split('#')
+
+    for text in text_container_a:
+        if len(text) == 0:
+            continue
+        player = text.split()
+        team_a_players[player[0]] = player[1] + ' ' + player[2]
+
+    for text in text_container_b:
+        if len(text) == 0:
+            continue
+        player = text.split()
+        team_b_players[player[0]] = player[1] + ' ' + player[2]
+
+    return team_a_players, team_b_players
+
+
 
 def find_goalies_of_match(driver):
     team_a_goalies = []
@@ -125,6 +154,8 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
         EC.element_to_be_clickable((By.CSS_SELECTOR, "div[role='tablist'] a.v-tab[href*='shotmap']"))
     ).click()
 
+    team_a_players, team_b_players = create_player_dictionary(driver)
+
     logger.info('Selecting all shot-spot type elements.')
     shot_spots = WebDriverWait(driver, 5).until(
         EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.shot-spot'))
@@ -138,13 +169,17 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
         if shot_spot.text == 'XX':
             continue
 
+        shot_time = None
+        goalie = None
+        shot_x, shot_y = [None, None]
+
         shot_spot_class = shot_spot.get_attribute('class').split()
         shot_outcome = shot_spot_class[2]
         shot_team = shot_spot_class[1]
 
         # First hover over goals, to get the location of the shot in the goal.
 
-        if shot_outcome == 'shot_goal':
+        if shot_outcome == 'shot_goal' or shot_outcome == 'shot_saved':
             driver.execute_script("""
                 const el = arguments[0];
                 for (const type of ['mouseenter','mouseover','mousemove']) {
@@ -152,57 +187,46 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
                     el.dispatchEvent(evt);
                 }
                 """, shot_spot)
-            shot_popups = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-goal-placement")))
+            if shot_outcome == 'shot_goal':
+                goal_popups = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-goal-placement")))
+                for popup in goal_popups:
+                    if popup not in goal_popup_set:
+                        shot_popup = popup
+                        goal_popup_set.add(popup)
+                        break
+
+                popup_style = popup.get_attribute('style')
+                popup_style = popup_style.split(':')
+                shot_x = float(popup_style[1][:-7])
+                shot_y = float(popup_style[2][:-3])
+
+            shot_popups = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-popup")))
             for popup in shot_popups:
-                if popup not in goal_popup_set:
+                if popup not in shot_popup_set:
                     shot_popup = popup
-                    goal_popup_set.add(popup)
+                    shot_popup_set.add(popup)
                     break
 
-            popup_style = popup.get_attribute('style')
-            popup_style = popup_style.split(':')
-            shot_x = float(popup_style[1][:-7])
-            shot_y = float(popup_style[2][:-3])
-        else:
-            shot_x, shot_y = [-1, -1]
+            shot_info = popup.text
+            shot_info = shot_info.split('\n')
+            for part in shot_info:
+                if '#' in part:
+                    player_name = part
+                if ':' in part:
+                    shot_time = part
+                    break
+            else:
+                shot_time = '0:01'
+            shot_time = shot_time.split(':')
 
-        # Next we hover over all shotspots, to get the player name.
-
-        driver.execute_script("""
-            const el = arguments[0];
-            for (const type of ['mouseenter','mouseover','mousemove']) {
-                const evt = new MouseEvent(type, {bubbles: true, cancelable: true, view: window});
-                el.dispatchEvent(evt);
-            }
-            """, shot_spot)
-        
-        shot_popups = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-popup")))
-        for popup in shot_popups:
-            if popup not in shot_popup_set:
-                shot_popup = popup
-                shot_popup_set.add(popup)
-                break
-
-        shot_info = popup.text
-        shot_info = shot_info.split('\n')
-        for part in shot_info:
-            if '#' in part:
-                player_name = part
-            if ':' in part:
-                shot_time = part
-                break
-        else:
-            shot_time = '0:01'
-        shot_time = shot_time.split(':')
-
-        # Check the goalie for all goals and saves.
-        if shot_outcome == 'shot_goal' or shot_outcome == 'shot_saved':
-            shot_mins = int(shot_time[0])
-            shot_secs = int(shot_time[1])
-            if shot_team == 'team_A':
-                goalie = goalie_finder(team_b_goalies, shot_mins, shot_secs)
-            elif shot_team == 'team_B':
-                goalie = goalie_finder(team_a_goalies, shot_mins, shot_secs)
+            # Check the goalie for all goals and saves.
+            if shot_outcome == 'shot_goal' or shot_outcome == 'shot_saved':
+                shot_mins = int(shot_time[0])
+                shot_secs = int(shot_time[1])
+                if shot_team == 'team_A':
+                    goalie = goalie_finder(team_b_goalies, shot_mins, shot_secs)
+                elif shot_team == 'team_B':
+                    goalie = goalie_finder(team_a_goalies, shot_mins, shot_secs)
 
 
         spot_style = shot_spot.get_attribute('style').split()
@@ -211,10 +235,14 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
         # Origin is top left, coordinates as percentages of field size.
         # Style is in format: 'left: XX.XX%; top: YY.YY%;'
 
+        player_number = shot_spot.text
+
         if shot_team == 'team_A':
             team_name = team_A
+            player_name = f'#{player_number} {team_a_players[player_number]}'
         elif shot_team == 'team_B':
             team_name = team_B
+            player_name = f'#{player_number} {team_b_players[player_number]}'
             # Mirror all shots.
             x_coordinate = 40 - x_coordinate
             y_coordinate = 20 - y_coordinate
@@ -239,7 +267,12 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
 
     logger.info('Creating dataframe from list of dictionaries.')
 
-    output_file = f'{MATCH_FOLDER}/{date.year}-{date.year + 1}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}'
+    if date.month < 6:
+        season_start = date.year - 1
+    else: 
+        season_start = date.year
+
+    output_file = f'{MATCH_FOLDER}/{season_start}-{season_start + 1}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}'
     match save_to_file:
         case 'parquet':
             output_file = output_file + '.parquet'
@@ -262,6 +295,7 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
 
 def scrape_entire_season(driver, url='https://tulospalvelu.fliiga.com/matches/402!sb2025'):
     logger.info(f'Starting execution of scrape_entire_season.')
+    match_info_list = []
 
     logger.info('Connecting to:' + url)
     driver.get(url)
@@ -291,8 +325,11 @@ def scrape_entire_season(driver, url='https://tulospalvelu.fliiga.com/matches/40
             d = date(int(date_str[2]), int(date_str[1]), int(date_str[0]))
 
         match_url = 'https://tulospalvelu.fliiga.com/match/' + match.get_attribute('matchid') + '/events'
-        scrape_match_page(driver, match_url, d, team_A, team_B, True)
-        # print(f'{team_A} - {team_B} {d.day}.{d.month}.{d.year}\n')
+        match_info_list.append([match_url, d, team_A, team_B])
+
+    for url, pvm, a, b in match_info_list:
+        scrape_match_page(driver, url, pvm, a, b, 'parquet')
+    # print(f'{team_A} - {team_B} {d.day}.{d.month}.{d.year}\n')
 
 
 
@@ -310,8 +347,8 @@ def main():
     driver = webdriver.Chrome(options=options)
     url = 'https://tulospalvelu.fliiga.com/match/868713/events'
 
-    scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', 'csv') # For testing.
-    # scrape_entire_season(driver)
+    # scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', 'parquet') # For testing.
+    scrape_entire_season(driver)
 
     logger.info('Quitting Chrome')
     driver.quit()

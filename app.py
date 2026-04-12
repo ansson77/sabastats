@@ -231,13 +231,17 @@ def set_player_options(selected_team):
 
     if len(selected_team) > 1:
         for team in selected_team:
-            list_of_players += [{'label': i, 'value': i} for i in players_of_teams[team]]
+            list_of_players += [{'label': i, 'value': i} for i in \
+                                sorted(players_of_teams[team], \
+                                       key=lambda s: int(s.split(maxsplit=1)[0][1:]))]
         return list_of_players
     
     elif len(selected_team) == 0:
         return list_of_players
     
-    return list_of_players + [{'label': i, 'value': i} for i in players_of_teams[selected_team[0]]]
+    return list_of_players + [{'label': i, 'value': i} for i in \
+                              sorted(players_of_teams[selected_team[0]], \
+                                     key=lambda s: int(s.split(maxsplit=1)[0][1:]))]
 
 @callback(
     Output('player_selector', 'value'),
