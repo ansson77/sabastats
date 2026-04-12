@@ -131,6 +131,7 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
     )
 
     shot_list = []
+    goal_popup_set = set()
     shot_popup_set = set()
 
     for shot_spot in shot_spots:
@@ -141,6 +142,8 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
         shot_outcome = shot_spot_class[2]
         shot_team = shot_spot_class[1]
 
+        # First hover over goals, to get the location of the shot in the goal.
+
         if shot_outcome == 'shot_goal':
             driver.execute_script("""
                 const el = arguments[0];
@@ -149,7 +152,12 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
                     el.dispatchEvent(evt);
                 }
                 """, shot_spot)
-            popup = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-goal-placement")))[0]
+            shot_popups = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-goal-placement")))
+            for popup in shot_popups:
+                if popup not in goal_popup_set:
+                    shot_popup = popup
+                    goal_popup_set.add(popup)
+                    break
 
             popup_style = popup.get_attribute('style')
             popup_style = popup_style.split(':')
@@ -158,29 +166,43 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
         else:
             shot_x, shot_y = [-1, -1]
 
-        if shot_outcome == 'shot_saved' or shot_outcome == 'shot_goal':
-            driver.execute_script("""
-                const el = arguments[0];
-                for (const type of ['mouseenter','mouseover','mousemove']) {
-                    const evt = new MouseEvent(type, {bubbles: true, cancelable: true, view: window});
-                    el.dispatchEvent(evt);
-                }
-                """, shot_spot)
-            
-            popup = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-popup")))[0]
-            shot_info = popup.text
-            shot_time = shot_info.split('\n')[2]
-            shot_time = shot_time.split(':')
+        # Next we hover over all shotspots, to get the player name.
+
+        driver.execute_script("""
+            const el = arguments[0];
+            for (const type of ['mouseenter','mouseover','mousemove']) {
+                const evt = new MouseEvent(type, {bubbles: true, cancelable: true, view: window});
+                el.dispatchEvent(evt);
+            }
+            """, shot_spot)
+        
+        shot_popups = wait.until(EC.visibility_of_all_elements_located((By.CSS_SELECTOR, ".shot-popup")))
+        for popup in shot_popups:
+            if popup not in shot_popup_set:
+                shot_popup = popup
+                shot_popup_set.add(popup)
+                break
+
+        shot_info = popup.text
+        shot_info = shot_info.split('\n')
+        for part in shot_info:
+            if '#' in part:
+                player_name = part
+            if ':' in part:
+                shot_time = part
+                break
+        else:
+            shot_time = '0:01'
+        shot_time = shot_time.split(':')
+
+        # Check the goalie for all goals and saves.
+        if shot_outcome == 'shot_goal' or shot_outcome == 'shot_saved':
             shot_mins = int(shot_time[0])
             shot_secs = int(shot_time[1])
-
             if shot_team == 'team_A':
-                goalie = goalie_finder(team_a_goalies, shot_mins, shot_secs)
-            elif shot_team == 'team_B':
                 goalie = goalie_finder(team_b_goalies, shot_mins, shot_secs)
-        
-        else:
-            goalie = None
+            elif shot_team == 'team_B':
+                goalie = goalie_finder(team_a_goalies, shot_mins, shot_secs)
 
 
         spot_style = shot_spot.get_attribute('style').split()
@@ -204,7 +226,7 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
             'Match': game_id,
             'date': date,
             'Team name': team_name,
-            'Player number': shot_spot.text,
+            'Player': player_name,
             'Shot outcome': shot_outcome,
             'X': x_coordinate,
             'Y': y_coordinate,

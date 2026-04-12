@@ -129,7 +129,7 @@ def create_pitch_plotly(length=RINK_LENGTH, width=RINK_WIDTH):
 def add_team_trace(fig, view, team, selected_player):
     color = team_colors.get(team, '#1f77b4')
     if selected_player != 'All':
-        view = view[view['Player number'] == selected_player]
+        view = view[view['Player'] == selected_player]
     
     fig.add_trace(go.Scattergl(
         x=view['X'].to_numpy(),
@@ -137,7 +137,7 @@ def add_team_trace(fig, view, team, selected_player):
         mode='markers',
         marker=dict(size=8, color=color, opacity=0.85),
         name=team,
-        # number=view['Player number'],
+        # number=view['Player'],
         hovertemplate="x: %{x:.2f}<br>y: %{y:.2f}<br>Team: %{text}<br>Player: %{number}<extra></extra>",
         text=view['Team name'],
         showlegend=False
@@ -162,7 +162,7 @@ def make_figure(selected_teams, selected_player, seasons_to_include, shot_outcom
         mask &= df["Shot outcome"].isin(shot_outcomes_selected)
 
     # Slice once and keep only plotting columns
-    view = df.loc[mask, ["X", "Y", "Team name", 'Player number']]
+    view = df.loc[mask, ["X", "Y", "Team name", 'Player']]
 
     for team in selected_teams:
         sub = view[view['Team name'] == team]
@@ -183,7 +183,7 @@ teams.sort()
 first_season = 2010
 last_season = 2025
 
-players_of_teams = {team: df[df['Team name'] == team]['Player number'].unique().tolist() for team in teams}
+players_of_teams = {team: df[df['Team name'] == team]['Player'].unique().tolist() for team in teams}
 
 palette = qual.Set2  # or qual.Set1, qual.D3, etc.
 team_colors = {team: palette[i % len(palette)] for i, team in enumerate(teams)}
