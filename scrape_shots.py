@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 from datetime import date
 import csv
 import pandas as pd
+from pathlib import Path
 
 MATCH_FOLDER = 'match_folder'
 
@@ -124,6 +125,16 @@ def goalie_finder(list_of_goalie_times, shot_mins, shot_secs):
 
 
 def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
+    if date.month < 6:
+        season_start = date.year - 1
+    else: 
+        season_start = date.year
+
+    output_file = f'{MATCH_FOLDER}/{season_start}-{season_start + 1}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}'
+    if Path(output_file + '.parquet').exists() or Path(output_file + '.csv').exists():
+        logger.info(f'File {output_file} exists already, not scraping page {url}')
+        return None
+    
     game_id = url.split('/')[-2]
     logger.info(f'Requesting page {url}')
     driver.get(url)
@@ -272,12 +283,7 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
 
     logger.info('Creating dataframe from list of dictionaries.')
 
-    if date.month < 6:
-        season_start = date.year - 1
-    else: 
-        season_start = date.year
-
-    output_file = f'{MATCH_FOLDER}/{season_start}-{season_start + 1}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}'
+    
     match save_to_file:
         case 'parquet':
             output_file = output_file + '.parquet'
