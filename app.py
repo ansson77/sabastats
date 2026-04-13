@@ -186,39 +186,17 @@ def create_goal_plotly():
 
     shapes += [
         # left post
-        dict(type="line", x0=0, y0=0, x1=0, y1=height - corner_radius,
+        dict(type="line", x0=0, y0=0, x1=0, y1=height,
              line=dict(color="black", width=post_width)),
         # Top bar
-        dict(type='line', x0=corner_radius, y0=height, x1=width - corner_radius, y1=height,
+        dict(type='line', x0=0, y0=height, x1=width, y1=height,
              line=dict(color='black', width=post_width)),
         # Right post
-        dict(type='line', x0=width, y0=height - corner_radius, x1=width, y1=0,
-             line=dict(color='black', width=post_width)) 
+        dict(type='line', x0=width, y0=height, x1=width, y1=0,
+             line=dict(color='black', width=post_width))
         ]
-    
-    corner_specs = [
-        # (center_x, center_y, theta1, theta2)
-        (width - corner_radius, height - corner_radius, 0, 90),     # top-right
-        (corner_radius, height - corner_radius, 90, 180),            # top-left
-    ]
-
-    arc_traces = []
-    for cx, cy, t1, t2 in corner_specs:
-        x, y = _quarter_arc(cx, cy, corner_radius, t1, t2, n=64)
-        arc_traces.append(
-            go.Scatter(
-                x=x, y=y,
-                mode="lines",
-                line=dict(color="black", width=post_width),
-                hoverinfo="skip",
-                showlegend=False
-            )
-        )
 
     fig = go.Figure()
-    # Add arcs first or last; shapes are always under data by default, so order isn’t critical
-    for tr in arc_traces:
-        fig.add_trace(tr)
 
     fig.update_layout(
         shapes=shapes,
@@ -234,29 +212,36 @@ def draw_shots_in_goal(fig, view):
     # -5.0 <= Goal_X <= 73
     # -4.0 <= Goal_Y <= 51.5
     # Bro wtf are these values?? These were the extreme values for the entire season 2025-2026,
-    # so theyre probably good enough to handle all edge cases.
-    x = (view['Goal_X'].to_numpy() + 3.0) #/ 78 * GOAL_WIDTH
-    y = GOAL_HEIGHT - (view['Goal_Y'].to_numpy() + 3)#/ 55.5) #* GOAL_HEIGHT)
     # In the original data the height is measured from the top, so we mirror it here after scaling it.
-    
-    # fig.add_trace(go.Scattergl(
-    #     x=x,
-    #     y=y,
-    #     mode='markers',
-    #     marker=dict(size=24, color='red', opacity=0.85),
-    #     showlegend=False
-    # ))
-    test_df = pd.read_csv('test_csv.csv')
-    testx = (test_df['Goal_X'].to_numpy() + 5) / 78 * GOAL_WIDTH
-    testy = GOAL_HEIGHT - ((test_df['Goal_Y'].to_numpy() + 4) / 55 * GOAL_HEIGHT)
+    # so theyre probably good enough to handle all edge cases.
 
+    '''
+    Even though values of shot coordinates vary between the values stated above, inspecting the extreme values 
+    you can see they are obviously nonsense, as they are completely inside the posts or ground. 
+    Therefore I clip them to sensible values.
+    Equation used is ( (x - x_min) / (x_max - x_min) ) * (y_max - y_min) + y_min
+    '''
+    x = (view['Goal_X'].clip(0, 68).to_numpy() / 68 * (155 - 5) + 5)
+    y = GOAL_HEIGHT - (view['Goal_Y'].clip(0, 50).to_numpy() / 50 * (112 - 5) + 5)
+    
     fig.add_trace(go.Scattergl(
-        x=testx,
-        y=testy,
+        x=x,
+        y=y,
         mode='markers',
-        marker=dict(size=24, color='blue', opacity=0.85),
+        marker=dict(size=24, color='lightblue', opacity=0.85),
         showlegend=False
     ))
+    # test_df = pd.read_csv('test_csv.csv')
+    # testx = ((test_df['Goal_X'].to_numpy() + 5) / (73 + 5) * (155 - 5) + 5)
+    # testy = GOAL_HEIGHT - ((test_df['Goal_Y'].to_numpy() + 4) / (51.5 + 4) * (112 - 5) + 5)
+    # # ( (x - x_min) / (x_max - x_min) ) * (y_max - y_min) + y_min
+    # fig.add_trace(go.Scattergl(
+    #     x=testx,
+    #     y=testy,
+    #     mode='markers',
+    #     marker=dict(size=24, color='blue', opacity=0.85),
+    #     showlegend=False
+    # ))
 
 def draw_goal(goalie='All'):
     fig = create_goal_plotly()
