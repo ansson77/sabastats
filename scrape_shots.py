@@ -37,6 +37,9 @@ def create_player_dictionary(driver):
         player = text.split()
         team_b_players[player[0]] = player[1] + ' ' + player[2]
 
+    team_a_players['OG'] = 'OG'
+    team_b_players['OG'] = 'OG'
+
     return team_a_players, team_b_players
 
 
@@ -236,6 +239,8 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
         # Style is in format: 'left: XX.XX%; top: YY.YY%;'
 
         player_number = shot_spot.text
+        if player_number == '':
+            player_number = 'OG'
 
         if shot_team == 'team_A':
             team_name = team_A
