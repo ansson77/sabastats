@@ -209,6 +209,11 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
                         goal_popup_set.add(popup)
                         break
 
+                # The location is gathered as the amount of pixels from the top left corner.
+                # -5.0 <= shot_x <= 73
+                # -4.0 <= shot_y <= 51.5
+                # Bro wtf are these values?? These were the extreme values for the entire season 2025-2026,
+                # so theyre probably good enough to handle all edge cases.
                 popup_style = popup.get_attribute('style')
                 popup_style = popup_style.split(':')
                 shot_x = float(popup_style[1][:-7])

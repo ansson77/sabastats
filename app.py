@@ -8,6 +8,8 @@ from datetime import date
 
 RINK_LENGTH = 40
 RINK_WIDTH = 20
+GOAL_HEIGHT = 115
+GOAL_WIDTH = 160
 
 
 def _quarter_arc(cx, cy, r, theta1_deg, theta2_deg, n=64):
@@ -172,6 +174,105 @@ def make_figure(selected_teams, selected_player, seasons_to_include, shot_outcom
 
     return fig
 
+def create_goal_plotly():
+    # Official dimensions are 115cm x 160cm
+    height = GOAL_HEIGHT
+    width = GOAL_WIDTH
+
+    corner_radius = 12 # This can be vibed
+    post_width = 15
+
+    shapes = []
+
+    shapes += [
+        # left post
+        dict(type="line", x0=0, y0=0, x1=0, y1=height - corner_radius,
+             line=dict(color="black", width=post_width)),
+        # Top bar
+        dict(type='line', x0=corner_radius, y0=height, x1=width - corner_radius, y1=height,
+             line=dict(color='black', width=post_width)),
+        # Right post
+        dict(type='line', x0=width, y0=height - corner_radius, x1=width, y1=0,
+             line=dict(color='black', width=post_width)) 
+        ]
+    
+    corner_specs = [
+        # (center_x, center_y, theta1, theta2)
+        (width - corner_radius, height - corner_radius, 0, 90),     # top-right
+        (corner_radius, height - corner_radius, 90, 180),            # top-left
+    ]
+
+    arc_traces = []
+    for cx, cy, t1, t2 in corner_specs:
+        x, y = _quarter_arc(cx, cy, corner_radius, t1, t2, n=64)
+        arc_traces.append(
+            go.Scatter(
+                x=x, y=y,
+                mode="lines",
+                line=dict(color="black", width=post_width),
+                hoverinfo="skip",
+                showlegend=False
+            )
+        )
+
+    fig = go.Figure()
+    # Add arcs first or last; shapes are always under data by default, so order isn’t critical
+    for tr in arc_traces:
+        fig.add_trace(tr)
+
+    fig.update_layout(
+        shapes=shapes,
+        xaxis=dict(range=[0, width], visible=False),
+        yaxis=dict(range=[0, height], visible=False, scaleanchor="x", scaleratio=1),
+        margin=dict(l=0, r=0, t=0, b=0),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+    )
+    return fig
+
+def draw_shots_in_goal(fig, view):
+    # -5.0 <= Goal_X <= 73
+    # -4.0 <= Goal_Y <= 51.5
+    # Bro wtf are these values?? These were the extreme values for the entire season 2025-2026,
+    # so theyre probably good enough to handle all edge cases.
+    x = (view['Goal_X'].to_numpy() + 3.0) #/ 78 * GOAL_WIDTH
+    y = GOAL_HEIGHT - (view['Goal_Y'].to_numpy() + 3)#/ 55.5) #* GOAL_HEIGHT)
+    # In the original data the height is measured from the top, so we mirror it here after scaling it.
+    
+    # fig.add_trace(go.Scattergl(
+    #     x=x,
+    #     y=y,
+    #     mode='markers',
+    #     marker=dict(size=24, color='red', opacity=0.85),
+    #     showlegend=False
+    # ))
+    test_df = pd.read_csv('test_csv.csv')
+    testx = (test_df['Goal_X'].to_numpy() + 5) / 78 * GOAL_WIDTH
+    testy = GOAL_HEIGHT - ((test_df['Goal_Y'].to_numpy() + 4) / 55 * GOAL_HEIGHT)
+
+    fig.add_trace(go.Scattergl(
+        x=testx,
+        y=testy,
+        mode='markers',
+        marker=dict(size=24, color='blue', opacity=0.85),
+        showlegend=False
+    ))
+
+def draw_goal(goalie='All'):
+    fig = create_goal_plotly()
+
+    mask = pd.Series(True, index=df.index)
+
+    if goalie != 'All':
+        mask &= (df['Goalie'] == goalie)
+
+    view = df.loc[mask, ["Goal_X", "Goal_Y"]]
+
+    draw_shots_in_goal(fig, view)
+    
+    return fig
+
+
 app = Dash()
 
 df = pd.read_parquet('match_folder/2025-2026/a_b_2025_1_1.parquet')
@@ -197,7 +298,7 @@ app.layout = html.Div([
                    reverse=False, 
                    included=True,
                    id='season_slider')
-    ]),
+    ], style={'margin-bottom': '30px'}),
 
     html.Div([
         dcc.Checklist(options=teams, value=teams, id='team_selector')
@@ -217,9 +318,11 @@ app.layout = html.Div([
 
                       value=['shot_goal', 'shot_saved', 'shot_blocked', 'shot_offtarget'],
                       id='shot_outcome_selector')
-    ], style={'width': '30%', 'display': 'inline-block', }),
+    ], style={'width': '30%', 'display': 'inline-block', 'margin-left': '30px'}),
 
-    dcc.Graph(id="graph_item", figure=create_pitch_plotly())
+    dcc.Graph(id="graph_item", figure=create_pitch_plotly(), style={'margin-bottom': '50px', 'margin-top': '30px'}),
+
+    dcc.Graph(id='goalie_graph_item', figure=draw_goal(), style={'margin-bottom': '100px'})
 ])
 
 
