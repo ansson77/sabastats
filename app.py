@@ -5,12 +5,18 @@ import plotly.graph_objects as go
 import numpy as np
 from plotly.colors import qualitative as qual
 from datetime import date
+from pathlib import Path
 
 RINK_LENGTH = 40
 RINK_WIDTH = 20
 GOAL_HEIGHT = 115
 GOAL_WIDTH = 160
 
+def _player_sort(s):
+    num_token, _, _ = s[1:].partition(' ')
+    if num_token == 'OG' or num_token == 'M':
+        return 100
+    return int(num_token)
 
 def _quarter_arc(cx, cy, r, theta1_deg, theta2_deg, n=64):
     """Return x,y points for a circular arc centered at (cx,cy) with radius r,
@@ -243,13 +249,23 @@ def draw_shots_in_goal(fig, view):
     #     showlegend=False
     # ))
 
-def draw_goal(goalie='All'):
+def draw_goal(selected_teams, outfield_player_chosen, seasons_to_include, goalie='All'):
     fig = create_goal_plotly()
+    min_date = date(seasons_to_include[0], 6, 10)
+    max_date = date(seasons_to_include[1] + 1, 6, 9)
 
     mask = pd.Series(True, index=df.index)
 
     if goalie != 'All':
         mask &= (df['Goalie'] == goalie)
+    
+    mask &= (df['date'] >= min_date)
+    mask &= (df['date'] <= max_date)
+    if outfield_player_chosen != 'All':
+        mask &= (df['Player'] == outfield_player_chosen)
+
+    if selected_teams:  # list (may be empty)
+        mask &= df["Team name"].isin(selected_teams)
 
     view = df.loc[mask, ["Goal_X", "Goal_Y"]]
 
@@ -260,7 +276,17 @@ def draw_goal(goalie='All'):
 
 app = Dash()
 
-df = pd.read_parquet('match_folder/2025-2026/a_b_2025_1_1.parquet')
+data_dir = Path('match_folder/2025-2026')
+
+full_df = pd.concat(
+    pd.read_parquet(parquet_file)
+    for parquet_file in data_dir.glob('*.parquet')
+)
+
+# df = pd.read_parquet('match_folder/2025-2026/a_b_2025_1_1.parquet')
+
+df = full_df
+
 df['Y'] = 20 - df['Y']
 
 
@@ -270,6 +296,7 @@ first_season = 2010
 last_season = 2025
 
 players_of_teams = {team: df[df['Team name'] == team]['Player'].unique().tolist() for team in teams}
+all_goalies = df['Goalie'].dropna().unique().tolist()
 
 palette = qual.Set2  # or qual.Set1, qual.D3, etc.
 team_colors = {team: palette[i % len(palette)] for i, team in enumerate(teams)}
@@ -307,7 +334,14 @@ app.layout = html.Div([
 
     dcc.Graph(id="graph_item", figure=create_pitch_plotly(), style={'margin-bottom': '50px', 'margin-top': '30px'}),
 
-    dcc.Graph(id='goalie_graph_item', figure=draw_goal(), style={'margin-bottom': '100px'})
+    html.Div([
+        html.Div([
+        dcc.Dropdown(id='goalie_selector', 
+                     options=['All'] + sorted(all_goalies, key=_player_sort),
+                     value='All')], style={'width': '30%', 'display': 'inline-block'}),
+        html.Div([
+        dcc.Graph(id='goalie_graph_item', figure=create_goal_plotly(), style={'margin-bottom': '100px'})],
+            style={'width': '65%', 'display': 'inline-block'})])
 ])
 
 
@@ -321,7 +355,7 @@ def set_player_options(selected_team):
         for team in selected_team:
             list_of_players += [{'label': i, 'value': i} for i in \
                                 sorted(players_of_teams[team], \
-                                       key=lambda s: int(s.split(maxsplit=1)[0][1:]))]
+                                       key=_player_sort)]
         return list_of_players
     
     elif len(selected_team) == 0:
@@ -329,7 +363,8 @@ def set_player_options(selected_team):
     
     return list_of_players + [{'label': i, 'value': i} for i in \
                               sorted(players_of_teams[selected_team[0]], \
-                                     key=lambda s: int(s.split(maxsplit=1)[0][1:]))]
+                                     key=_player_sort)]
+
 
 @callback(
     Output('player_selector', 'value'),
@@ -346,6 +381,15 @@ def set_player_value(available_options):
     Input('shot_outcome_selector', 'value'))
 def update_graph(teams_chosen, player_chosen, seasons_to_include, shot_outcomes_selected):
     return make_figure(teams_chosen, player_chosen, seasons_to_include, shot_outcomes_selected)
+
+@callback(
+    Output('goalie_graph_item', 'figure'),
+    Input('team_selector', 'value'),
+    Input('player_selector', 'value'),
+    Input('season_slider', 'value'),
+    Input('goalie_selector', 'value'))
+def update_goalie_graph(teams_chosen,  player_chosen, seasons_to_include, goalie):
+    return draw_goal(teams_chosen, player_chosen, seasons_to_include, goalie)
 
 
 if __name__ == '__main__':
