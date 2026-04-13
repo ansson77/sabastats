@@ -362,8 +362,9 @@ def main():
     logger.info('Starting Chrome')
     driver = webdriver.Chrome(options=options)
     url = 'https://tulospalvelu.fliiga.com/match/868713/events'
+    # url_wtf = 'https://tulospalvelu.fliiga.com/match/868732/events'
 
-    # scrape_match_page(driver, url, date(2025, 1, 1), 'a', 'b', 'parquet') # For testing.
+    # scrape_match_page(driver, url, date(2026, 1, 1), 'a', 'a', 'parquet') # For testing.
     scrape_entire_season(driver)
 
     logger.info('Quitting Chrome')
