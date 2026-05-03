@@ -12,6 +12,13 @@ RINK_WIDTH = 20
 GOAL_HEIGHT = 115
 GOAL_WIDTH = 160
 
+BINSIZE = 0.75  # adjust via slider if you want
+
+x_edges = np.arange(0, RINK_LENGTH + BINSIZE, BINSIZE)
+y_edges = np.arange(0, RINK_WIDTH + BINSIZE, BINSIZE)
+x_centers = (x_edges[:-1] + x_edges[1:]) / 2
+y_centers = (y_edges[:-1] + y_edges[1:]) / 2
+
 def _player_sort(s):
     num_token, _, _ = s[1:].partition(' ')
     if num_token == 'OG' or num_token == 'M':
@@ -151,7 +158,31 @@ def add_team_trace(fig, view, team, selected_player):
         showlegend=False
     ))
 
-def make_figure(selected_teams, selected_player, seasons_to_include, shot_outcomes_selected):
+def heatmap_trace(fig, view):
+    opacity = 0.8
+    if view.empty:
+        z = np.zeros((len(y_centers), len(x_centers)), dtype=float)
+    else:
+        # histogram2d returns shape (len(x_edges)-1, len(y_edges)-1) with x-first; transpose for Plotly
+        H, _, _ = np.histogram2d(view["X"].to_numpy(), view["Y"].to_numpy(),
+                                 bins=[x_edges, y_edges])
+        z = H.T  # transpose so z[y, x]
+
+    fig.add_trace(go.Heatmap(
+        x=x_centers,
+        y=y_centers,
+        z=z,
+        colorscale='Inferno',
+        zmin=0,
+        zmax=None,        # let scale adapt; or set a cap for comparability
+        opacity=opacity,
+        colorbar=dict(title="Shots"),
+        hovertemplate="x: %{x:.2f}<br>y: %{y:.2f}<br>shots: %{z}<extra></extra>"
+    ))
+    return fig
+
+    
+def make_figure(selected_teams, selected_player, seasons_to_include, shot_outcomes_selected, heatmap_toggle):
     shot_outcomes_selected = shot_outcomes_selected or []
     min_date = date(seasons_to_include[0], 6, 10)
     max_date = date(seasons_to_include[1] + 1, 6, 9)
@@ -166,17 +197,20 @@ def make_figure(selected_teams, selected_player, seasons_to_include, shot_outcom
     if selected_teams:  # list (may be empty)
         mask &= df["Team name"].isin(selected_teams)
 
-    if shot_outcomes_selected:  # list (may be empty)
-        mask &= df["Shot outcome"].isin(shot_outcomes_selected)
+    mask &= df["Shot outcome"].isin(shot_outcomes_selected)
 
     # Slice once and keep only plotting columns
     view = df.loc[mask, ["X", "Y", "Team name", 'Player']]
 
-    for team in selected_teams:
-        sub = view[view['Team name'] == team]
-        if not sub.empty:
-            add_team_trace(fig, sub, team, selected_player)
-    fig.update_layout(legend=dict(orientation="h", x=0.5, xanchor="center", y=1.02))
+    if heatmap_toggle == 'points':
+        for team in selected_teams:
+            sub = view[view['Team name'] == team]
+            if not sub.empty:
+                add_team_trace(fig, sub, team, selected_player)
+        fig.update_layout(legend=dict(orientation="h", x=0.5, xanchor="center", y=1.02))
+    
+    else:
+        fig = heatmap_trace(fig, view)
 
     return fig
 
@@ -283,7 +317,7 @@ full_df = pd.concat(
     for parquet_file in data_dir.glob('*.parquet')
 )
 
-# df = pd.read_parquet('match_folder/2025-2026/a_b_2025_1_1.parquet')
+# df = pd.read_parquet('match_folder/testing/a_b_2025_1_1.parquet')
 
 df = full_df
 
@@ -314,11 +348,11 @@ app.layout = html.Div([
 
     html.Div([
         dcc.Checklist(options=teams, value=teams, id='team_selector')
-    ], style={'width': '30%', 'display': 'inline-block'}),
+    ], style={'width': '20%', 'display': 'inline-block'}),
 
     html.Div([
         dcc.Dropdown(id='player_selector', value='All')
-    ], style={'width': '30%', 'display': 'inline-block'}),
+    ], style={'width': '20%', 'display': 'inline-block'}),
 
     html.Div([
         dcc.Checklist(options=[
@@ -326,11 +360,18 @@ app.layout = html.Div([
        {'label': 'Saved', 'value': 'shot_saved'},
        {'label': 'Blocked', 'value': 'shot_blocked'},
        {'label': 'Miss', 'value': 'shot_offtarget'}
-   ],
+        ],
 
-                      value=['shot_goal', 'shot_saved', 'shot_blocked', 'shot_offtarget'],
-                      id='shot_outcome_selector')
-    ], style={'width': '30%', 'display': 'inline-block', 'margin-left': '30px'}),
+                value=['shot_goal', 'shot_saved', 'shot_blocked', 'shot_offtarget'],
+                id='shot_outcome_selector')
+    ], style={'width': '20%', 'display': 'inline-block', 'margin-left': '30px'}),
+
+    html.Div([
+        dcc.RadioItems(options=[{'label': 'Points', 'value': 'points'},
+                                {'label': 'Heatmap', 'value': 'heatmap'}],
+                        value='points',
+                        id='heatmap_toggle')
+    ], style={'width': '20%', 'display': 'inline-block', 'margin-left': '30px'}),
 
     dcc.Graph(id="graph_item", figure=create_pitch_plotly(), style={'margin-bottom': '50px', 'margin-top': '30px'}),
 
@@ -378,9 +419,10 @@ def set_player_value(available_options):
     Input('team_selector', 'value'),
     Input('player_selector', 'value'),
     Input('season_slider', 'value'),
-    Input('shot_outcome_selector', 'value'))
-def update_graph(teams_chosen, player_chosen, seasons_to_include, shot_outcomes_selected):
-    return make_figure(teams_chosen, player_chosen, seasons_to_include, shot_outcomes_selected)
+    Input('shot_outcome_selector', 'value'),
+    Input('heatmap_toggle', 'value'))
+def update_graph(teams_chosen, player_chosen, seasons_to_include, shot_outcomes_selected, heatmap_toggle):
+    return make_figure(teams_chosen, player_chosen, seasons_to_include, shot_outcomes_selected, heatmap_toggle)
 
 @callback(
     Output('goalie_graph_item', 'figure'),
