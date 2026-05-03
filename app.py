@@ -141,10 +141,8 @@ def create_pitch_plotly(length=RINK_LENGTH, width=RINK_WIDTH):
 
     return fig
 
-def add_team_trace(fig, view, team, selected_player):
+def add_team_trace(fig, view, team):
     color = team_colors.get(team, '#1f77b4')
-    if selected_player != 'All':
-        view = view[view['Player'] == selected_player]
     
     fig.add_trace(go.Scattergl(
         x=view['X'].to_numpy(),
@@ -198,6 +196,8 @@ def make_figure(selected_teams, selected_player, seasons_to_include, shot_outcom
         mask &= df["Team name"].isin(selected_teams)
 
     mask &= df["Shot outcome"].isin(shot_outcomes_selected)
+    if selected_player != 'All':
+        mask &= df['Player'] == selected_player
 
     # Slice once and keep only plotting columns
     view = df.loc[mask, ["X", "Y", "Team name", 'Player']]
@@ -206,7 +206,7 @@ def make_figure(selected_teams, selected_player, seasons_to_include, shot_outcom
         for team in selected_teams:
             sub = view[view['Team name'] == team]
             if not sub.empty:
-                add_team_trace(fig, sub, team, selected_player)
+                add_team_trace(fig, sub, team)
         fig.update_layout(legend=dict(orientation="h", x=0.5, xanchor="center", y=1.02))
     
     else:
@@ -321,7 +321,10 @@ full_df = pd.concat(
 
 df = full_df
 
+# Mirror shots on the Y axis, as the origin in the scraped data is top left, while mine is in bottom left.
 df['Y'] = 20 - df['Y']
+# Encode the shot outcome into binary variable for xG calculation.
+df['is_goal'] = (df['Shot outcome'].eq('shot_goal')).astype('Int8')
 
 
 teams = df['Team name'].unique().tolist()
