@@ -9,6 +9,7 @@ from datetime import date
 import csv
 import pandas as pd
 from pathlib import Path
+import os
 
 MATCH_FOLDER = 'match_folder'
 
@@ -129,8 +130,11 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
         season_start = date.year - 1
     else: 
         season_start = date.year
+    folder = Path(f"{MATCH_FOLDER}/{season_start}-{season_start + 1}")
+    if not folder.exists():
+        os.mkdir(folder)
 
-    output_file = f'{MATCH_FOLDER}/{season_start}-{season_start + 1}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}'
+    output_file = f'{folder}/{team_A}_{team_B}_{date.year}_{date.month}_{date.day}'
     if Path(output_file + '.parquet').exists() or Path(output_file + '.csv').exists():
         logger.info(f'File {output_file} exists already, not scraping page {url}')
         return None
@@ -309,43 +313,65 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
 
 
 
-def scrape_entire_season(driver, url='https://tulospalvelu.fliiga.com/matches/402!sb2025'):
+def scrape_entire_season(driver, first_season, last_season, url='https://tulospalvelu.fliiga.com/matches/402!sb2025'):
     logger.info(f'Starting execution of scrape_entire_season.')
-    match_info_list = []
-
     logger.info('Connecting to:' + url)
     driver.get(url)
+    wait = WebDriverWait(driver, 5)
 
-    logger.info('Gathering all match elements.')
-    matches = WebDriverWait(driver, 5).until(
-        EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.outerrow'))
-    )
-    
-    for match in matches:
-        match_info = match.text.split('\n')
-        if len(match_info) > 7:
-            date_str, _time, _venue, team_A, score, _ja, team_B, _ottelukeskus = match_info
-        else:
-            date_str, _time, _venue, team_A, score, team_B, _ottelukeskus = match_info
+    for season in range(first_season, last_season + 1):
+        # Find dropdown menu for selecting season and click it.
+        wait.until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "#matchesseason .v-input__slot"))
+            ).click()
+        season_options = wait.until(
+            EC.presence_of_all_elements_located((By.CLASS_NAME, "v-list-item"))
+        )
+        # Find correct season
+        for opt in season_options:
+            title = opt.get_attribute("textContent")
+            # Check that the button is a season by checking it has substring 20 twice.
+            if title.count("20") < 2:
+                continue
+            start = title[:4]
+            if int(start) != season:
+                continue
+            # Found correct season from list, click it.
+            opt.click()
 
-        if len(score) <= 1:
-            continue
+        logger.info(f"Starting to scrape the season {title}")
 
-        # print(match_info)
+        match_info_list = []
+        logger.info('Gathering all match elements.')
+        matches = WebDriverWait(driver, 5).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, '.outerrow'))
+        )
+        
+        for match in matches:
+            match_info = match.text.split('\n')
+            if len(match_info) > 7:
+                date_str, _time, _venue, team_A, score, _ja, team_B, _ottelukeskus = match_info
+            else:
+                date_str, _time, _venue, team_A, score, team_B, _ottelukeskus = match_info
 
-        if len(date_str) < 9:
-            date_str = date_str.split()[1][:-1].split('.')
-            d = date(date.today().year, int(date_str[1]), int(date_str[0]))
-        else:
-            date_str = date_str.split('.')
-            d = date(int(date_str[2]), int(date_str[1]), int(date_str[0]))
+            if len(score) <= 1:
+                continue
 
-        match_url = 'https://tulospalvelu.fliiga.com/match/' + match.get_attribute('matchid') + '/events'
-        match_info_list.append([match_url, d, team_A, team_B])
+            # print(match_info)
 
-    for url, pvm, a, b in match_info_list:
-        scrape_match_page(driver, url, pvm, a, b, 'parquet')
-    # print(f'{team_A} - {team_B} {d.day}.{d.month}.{d.year}\n')
+            if len(date_str) < 9:
+                date_str = date_str.split()[1][:-1].split('.')
+                d = date(date.today().year, int(date_str[1]), int(date_str[0]))
+            else:
+                date_str = date_str.split('.')
+                d = date(int(date_str[2]), int(date_str[1]), int(date_str[0]))
+
+            match_url = 'https://tulospalvelu.fliiga.com/match/' + match.get_attribute('matchid') + '/events'
+            match_info_list.append([match_url, d, team_A, team_B])
+
+        for url, pvm, a, b in match_info_list:
+            scrape_match_page(driver, url, pvm, a, b, 'parquet')
+        # print(f'{team_A} - {team_B} {d.day}.{d.month}.{d.year}\n')
 
 
 
@@ -365,7 +391,7 @@ def main():
     # url_wtf = 'https://tulospalvelu.fliiga.com/match/868732/events'
 
     # scrape_match_page(driver, url, date(2026, 1, 1), 'a', 'a', 'parquet') # For testing.
-    scrape_entire_season(driver)
+    scrape_entire_season(driver, 2013, 2025)
 
     logger.info('Quitting Chrome')
     driver.quit()
