@@ -3,6 +3,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import StaleElementReferenceException
 import logging
 logger = logging.getLogger(__name__)
 from datetime import date
@@ -12,6 +13,18 @@ from pathlib import Path
 import os
 
 MATCH_FOLDER = 'match_folder'
+
+def retry_click(element) -> (bool):
+    # Try clicking again twice before giving up
+    while i < 2:
+        try:
+            element.click()
+        except StaleElementReferenceException as e:
+            i += 1
+        else:
+            return True
+    raise e
+    
 
 def create_player_dictionary(driver):
     team_a_players = {}
@@ -168,9 +181,13 @@ def scrape_match_page(driver, url, date, team_A, team_B, save_to_file=True):
 
     logger.info('Clicking Laukaisukartta.')
     wait = WebDriverWait(driver, 5)
-    wait.until(
+    shot_map_button = wait.until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, "div[role='tablist'] a.v-tab[href*='shotmap']"))
-    ).click()
+    )
+    try:
+        shot_map_button.click()
+    except StaleElementReferenceException:
+        retry_click(shot_map_button)
 
     team_a_players, team_b_players = create_player_dictionary(driver)
 
@@ -321,9 +338,14 @@ def scrape_entire_season(driver, first_season, last_season, url='https://tulospa
 
     for season in range(first_season, last_season + 1):
         # Find dropdown menu for selecting season and click it.
-        wait.until(
+        season_selector = wait.until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "#matchesseason .v-input__slot"))
-            ).click()
+            )
+        try:
+            season_selector.click()
+        except StaleElementReferenceException:
+            retry_click(season_selector)
+
         season_options = wait.until(
             EC.presence_of_all_elements_located((By.CLASS_NAME, "v-list-item"))
         )
@@ -337,7 +359,11 @@ def scrape_entire_season(driver, first_season, last_season, url='https://tulospa
             if int(start) != season:
                 continue
             # Found correct season from list, click it.
-            opt.click()
+            try:
+                opt.click()
+            except StaleElementReferenceException:
+                retry_click(opt)
+
 
         logger.info(f"Starting to scrape the season {title}")
 
@@ -349,10 +375,14 @@ def scrape_entire_season(driver, first_season, last_season, url='https://tulospa
         
         for match in matches:
             match_info = match.text.split('\n')
-            if len(match_info) > 7:
+            if len(match_info) == 8:
                 date_str, _time, _venue, team_A, score, _ja, team_B, _ottelukeskus = match_info
-            else:
+            elif len(match_info) == 7:
                 date_str, _time, _venue, team_A, score, team_B, _ottelukeskus = match_info
+            elif len(match_info) == 6:
+                date_str, _time, team_A, score, team_B, _ottelukeskus = match_info
+            else:
+                raise Exception("unknown string formatting of match info: ", match_info)
 
             if len(score) <= 1:
                 continue
@@ -378,7 +408,7 @@ def scrape_entire_season(driver, first_season, last_season, url='https://tulospa
 
 
 def main():
-    logging.basicConfig(filename='sabastats.log', level=logging.INFO)
+    logging.basicConfig(filename='sabastats.log', format='%(asctime)s  %(message)s', level=logging.INFO)
     logger.info(f'Starting {__name__}')
 
     options = Options()
